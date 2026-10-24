@@ -4,7 +4,8 @@ Teste técnico **Elite Dev (Verzel)**: uma casa de leilões em que leiloeiros pu
 pública e licitantes disputam cada lote com lances ao vivo. O vencedor recebe um comprovante compartilhável por link,
 e qualquer pessoa, mesmo sem login, pode auditar o histórico de lances de um lote e verificar que ele não foi adulterado.
 
-- **Deploy:** `COLE_AQUI_O_LINK_DA_APLICACAO`
+- **Deploy:** <https://leilao-qc1x.onrender.com/> (plano gratuito do Render: se o serviço estiver "dormindo", a primeira abertura pode levar cerca de 1 minuto)
+- **Autora:** Thays de Avila Garcia ([@thaysg](https://github.com/thaysg))
 - **Contas de demonstração** (senha `demo1234`): `leiloeiro@demo.com` (leiloeiro) · `ana@demo.com` e `bruno@demo.com` (licitantes)
 
 ## Sumário
@@ -127,7 +128,7 @@ FRONTEND_DIST=../frontend/dist uvicorn app.main:app --port 8000     # tudo em ht
 
 ### Dados de demonstração
 
-Criados automaticamente quando o banco está vazio. Para apagar tudo e recriar (também reajusta os horários dos lotes): `python -m app.seed --reset`.
+Criados automaticamente quando o banco está vazio. Para apagar tudo e recriar (também reajusta os horários dos lotes): `python -m app.seed --reset` (com o servidor **parado**; ver [Comportamentos que podem surpreender](#comportamentos-que-podem-surpreender)).
 
 | Conta | Papel | Saldo inicial |
 |---|---|---|
@@ -185,7 +186,7 @@ Os testes do back-end precisam de PostgreSQL real porque o controle de concorrê
    ```sql
    UPDATE bids SET amount_cents = 100 WHERE lot_id = 1 AND seq = 2;
    ```
-   (Para voltar ao normal: `python -m app.seed --reset`.)
+   (Para voltar ao normal, com o servidor parado: `python -m app.seed --reset`.)
 10. **API fora:** a vitrine, a sala, a auditoria e o comprovante nunca dependem da API externa. Só a busca de itens do painel depende dela (usa cache e avisa).
 
 ## Regras de negócio
@@ -254,7 +255,8 @@ As imagens vêm do servidor de imagens do museu. Se ele cair, os textos continua
 - **Pseudônimos por lote:** o mesmo licitante aparece com códigos diferentes em lotes diferentes, de propósito (privacidade).
 - **Sessão:** token JWT válido por 7 dias, guardado no `localStorage`.
 - **Horários:** exibidos no fuso do navegador; a contagem regressiva usa o relógio do servidor, não o do computador.
-- **Dados de demonstração:** os horários dos lotes semeados são relativos ao momento do seed; lotes semeados podem encerrar com o tempo. Use `python -m app.seed --reset` para renovar.
+- **Dados de demonstração:** os horários dos lotes semeados são relativos ao momento do seed. No deploy, o lote que termina em ~20 minutos já terá encerrado quando você abrir o link; os outros lotes ao vivo ficam abertos por 7 e 14 dias após o seed, e depois também encerram. O lote agendado, o encerrado com vencedor e o encerrado sem lances continuam disponíveis para o roteiro de avaliação.
+- **Renovar os dados de demonstração:** `python -m app.seed --reset` apaga todos os dados e recria os de demonstração. Rode-o com o servidor **parado** (pare o `uvicorn` com Ctrl+C, rode o seed e suba o servidor de novo). Com o servidor ligado, o laço de liquidação pode encerrar lotes no meio do seed e causar o erro "Este lote já foi encerrado".
 - **Fora do escopo (conforme o enunciado):** nota fiscal, revenda entre usuários, aplicativo nativo e recuperação de senha.
 
 ## Limitações conhecidas
@@ -267,23 +269,37 @@ As imagens vêm do servidor de imagens do museu. Se ele cair, os textos continua
 
 ## Deploy
 
-`PREENCHER: provedor, link da aplicação e como foi publicado.`
+**Link da aplicação:** <https://leilao-qc1x.onrender.com/>
 
-Requisitos do serviço: um PostgreSQL (qualquer provedor gerenciado serve), build do front e **um único processo** do uvicorn. Exemplo genérico (ajuste ao provedor):
+| Parte | Onde está |
+|---|---|
+| Aplicação (API + WebSocket + front) | [Render](https://render.com), plano gratuito, **um único serviço** Python: o FastAPI entrega a API, o WebSocket e o build do React no mesmo domínio |
+| Banco de dados | [Neon](https://neon.com), PostgreSQL gratuito, com conexão **direta** (sem pooler, por causa das travas de linha usadas nos lances) |
+| Código | <https://github.com/thaysg/leilao> (público); o Render publica a branch `main` a cada `git push` |
 
-```bash
-# build
-cd frontend && npm install && npm run build && cd ../backend && pip install -r requirements.txt
-# start (a plataforma costuma fornecer a porta em $PORT)
-cd backend && FRONTEND_DIST=../frontend/dist uvicorn app.main:app --host 0.0.0.0 --port $PORT
-```
+**Configuração do serviço no Render**
 
-Variáveis a definir no provedor: `DATABASE_URL`, `SECRET_KEY`, `AUDIT_SECRET` (valores longos e aleatórios) e, se quiser os dados de demonstração, `SEED_ON_START=true`.
-O provedor precisa permitir WebSocket. Em planos gratuitos que "dormem" após inatividade, a primeira requisição pode demorar.
+- **Root Directory:** vazio (raiz do repositório). **Runtime:** Python 3. **Health check:** `/api/health`.
+- **Build Command:**
+  ```bash
+  cd frontend && npm install --include=dev && npm run build && cd ../backend && pip install -r requirements.txt
+  ```
+  (`--include=dev` é necessário porque o build do front usa `tsc` e `vite`, que são devDependencies.)
+- **Start Command** (apenas **1 worker**, porque as salas do WebSocket ficam na memória do processo):
+  ```bash
+  cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+  ```
+- **Variáveis de ambiente:** `DATABASE_URL` (conexão do Neon), `SECRET_KEY` e `AUDIT_SECRET` (valores longos e aleatórios, diferentes entre si), `FRONTEND_DIST=../frontend/dist`, `SEED_ON_START=true` e `PYTHON_VERSION=3.12.7`.
+- Os dados de demonstração foram criados na primeira subida (`SEED_ON_START=true` com o banco vazio). Para renová-los, veja [Comportamentos que podem surpreender](#comportamentos-que-podem-surpreender).
+
+**O que esperar do plano gratuito**
+
+- O Render coloca o serviço para "dormir" após ~15 minutos sem acesso; a primeira requisição depois disso pode levar cerca de 1 minuto. Enquanto dorme, o laço de liquidação não roda, mas um lote vencido é liquidado assim que alguém o abre.
+- O banco do Neon também pausa quando ocioso e acorda na primeira conexão.
+- A `AUDIT_SECRET` não deve ser trocada depois que existirem lances: os históricos antigos deixariam de validar na auditoria.
 
 ## Uso de IA
 
-`PREENCHER COM SUAS PALAVRAS (o enunciado pede: onde e como usou IA, o que revisou e ajustou).`
+Usei o **Claude** (Anthropic) como ferramenta de apoio para **criar o projeto**: o código do back-end e do front-end, os testes automatizados e a documentação (incluindo este README), além do passo a passo do deploy no Render e no Neon.
 
-Sugestão de pontos a contar, confirmando o que de fato foi feito por você: quais partes foram geradas com IA (por exemplo, o código do back-end e do front-end, os testes e este README),
-como você testou e revisou o resultado (rodou os testes, conferiu as regras de negócio contra o enunciado, testou no navegador), o que você ajustou ou decidiu (escolha do banco e do deploy, correções após testar) e o que você validou criticamente em relação à arquitetura.
+**A revisão e os testes foram feitos por mim.** Revisei o que foi gerado, rodei o projeto e testei a aplicação, e os ajustes e a publicação final também foram feitos por mim.
