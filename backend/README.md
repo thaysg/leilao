@@ -1,6 +1,6 @@
 # Casa de Leilões — Backend (FastAPI + PostgreSQL)
 
-API do teste técnico **Elite Dev (Verzel)**. Itens leiloados vêm da API pública do *Art Institute of Chicago*.
+API do teste técnico **Elite Dev (Verzel)**. Itens leiloados vêm da API pública do *Cleveland Museum of Art* (Open Access, domínio público).
 Leiloeiros criam lotes, licitantes dão lances ao vivo, o vencedor recebe um comprovante público, e qualquer pessoa
 pode auditar o histórico de lances de um lote.
 
@@ -107,14 +107,14 @@ UPDATE bids SET amount_cents = 100 WHERE lot_id = 1 AND seq = 2;
 
 ## API externa e resiliência
 
-Fonte: <https://api.artic.edu> (sem chave). Só é usada em **buscar itens** e **criar lote**.
+Fonte: <https://openaccess-api.clevelandart.org> (sem chave, dados CC0). Só é usada em **buscar itens** e **criar lote**.
 
 1. O lote guarda um **snapshot** (título, imagem, atributos). Vitrine, sala, auditoria e comprovante nunca chamam a API.
 2. Respostas ficam em cache no banco (frescas por 10 min; quando a API cai, serve o cache vencido com `stale: true`).
 3. Timeout de 6 s, 1 nova tentativa e disjuntor (pausa de 30 s após falhas seguidas).
 4. Sem cache e API fora: o painel recebe `503 external_unavailable` com mensagem clara. O resto continua funcionando.
 
-As **imagens** são servidas pelo próprio site do museu (IIIF); se ele cair, o texto funciona e a imagem usa o
+As **imagens** são servidas pelo próprio site do museu (CDN do museu); se ele cair, o texto funciona e a imagem usa o
 placeholder do front. Os lotes de demonstração usam itens reais quando a API responde na hora do seed e itens fictícios
 sem imagem caso contrário.
 

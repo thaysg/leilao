@@ -91,9 +91,11 @@ def test_lot_is_settled_lazily_when_opened_after_end(client, db, world):
 
 # ---- external API resilience ----
 
-RAW = {"data": [{"id": 7, "title": "Waterlilies", "image_id": "abc", "artist_display": "Monet"},
-                {"id": 8, "title": "No image", "image_id": None}],
-       "pagination": {"total": 2}, "config": {"iiif_url": "https://iiif.test"}}
+RAW = {"info": {"total": 2}, "data": [
+    {"id": 7, "title": "Waterlilies", "creation_date": "1906", "technique": "Oil on canvas", "type": "Painting",
+     "creators": [{"description": "Claude Monet (French, 1840-1926)"}],
+     "images": {"web": {"url": "https://cdn.test/7/7_web.jpg"}}},
+    {"id": 8, "title": "No image", "images": {"web": None}}]}
 
 
 def test_external_cache_stale_and_503(client, db, world, monkeypatch):
@@ -111,7 +113,8 @@ def test_external_cache_stale_and_503(client, db, world, monkeypatch):
     monkeypatch.setattr(external, "_fetch", lambda *a, **k: RAW)
     ok = client.get("/api/seller/items?q=monet", headers=hs).json()
     assert [i["external_id"] for i in ok["items"]] == ["7"] and ok["stale"] is False   # items without image are skipped
-    assert ok["items"][0]["image_url"] == "https://iiif.test/abc/full/843,/0/default.jpg"
+    assert ok["items"][0]["image_url"] == "https://cdn.test/7/7_web.jpg"
+    assert ok["items"][0]["attributes"]["Artista"].startswith("Claude Monet")
 
     monkeypatch.setattr(external, "_fetch", down)
     with engine.begin() as c:
@@ -132,6 +135,6 @@ def test_create_lot_uses_snapshot_even_if_api_is_down(client, db, world, monkeyp
     assert r.status_code == 200 and r.json()["title"] == "Waterlilies"
     lot_id = r.json()["id"]
     d = client.get(f"/api/lots/{lot_id}")   # room works with the API down
-    assert d.status_code == 200 and d.json()["image_url"].endswith("default.jpg")
+    assert d.status_code == 200 and d.json()["image_url"].endswith("7_web.jpg")
     bad = client.post("/api/seller/lots", json={**body, "ends_at": (now - timedelta(hours=1)).isoformat()}, headers=hs)
     assert bad.json()["code"] == "invalid_window"

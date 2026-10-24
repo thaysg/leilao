@@ -27,13 +27,26 @@ FALLBACK_ITEMS = [
 ]
 
 
+SEED_QUERIES = ["impressionism", "landscape painting", "portrait", "still life", "flowers"]
+
+
 def _items(db) -> list[ItemDTO]:
-    try:
-        found = external.search_items(db, "impressionism", 1, 10)["items"]
-        if len(found) >= 6:
-            return [ItemDTO(**i) for i in found]
-    except ApiError:
-        pass
+    """Real artworks (with pictures) from the Cleveland Museum of Art API; falls back to image-less demo items if it is unreachable."""
+    found: dict[str, ItemDTO] = {}
+    for q in SEED_QUERIES:
+        try:
+            for raw in external.search_items(db, q, 1, 20)["items"]:
+                found.setdefault(raw["external_id"], ItemDTO(**raw))
+        except ApiError:
+            break  # API down: no point in trying the other queries
+        if len(found) >= 8:
+            break
+    if len(found) >= 6:
+        print(f"[seed] {len(found)} itens reais (com imagem) obtidos da API do Cleveland Museum of Art.")
+        return list(found.values())
+    reason = external._Breaker.last_error or "a API devolveu poucos itens com imagem"
+    print(f"[seed] ATENÇÃO: usando itens de demonstração SEM imagem. Motivo: {reason}")
+    print("[seed] Com a internet funcionando, rode `python -m app.seed --reset` para tentar de novo.")
     return [ItemDTO(external_id=f"demo-{n}", title=t, image_url=None, thumb_url=None, source="demo",
                     description="Item de demonstração (API externa indisponível durante o seed).",
                     attributes={"Artista": a, "Data": d}) for n, (t, a, d) in enumerate(FALLBACK_ITEMS)]

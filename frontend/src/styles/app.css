@@ -56,7 +56,8 @@
 .hero { margin-bottom: 22px; }
 .hero p { color: var(--muted); margin-top: 6px; max-width: 56ch; }
 .toolbar { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
-.toolbar__row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+/* flex-end keeps the search box, the labelled "Ordenar" select and the "Preço" button on the same baseline */
+.toolbar__row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
 .search { position: relative; flex: 1 1 240px; }
 .search svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
 .search .input { padding-left: 42px; }
